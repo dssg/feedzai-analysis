@@ -3,7 +3,7 @@ data/**
 logs/**
 references/**
 results/**
-conf/local/**
+conf/**
 
 # Jupyter Notebook
 .ipynb_checkpoints
