@@ -370,3 +370,28 @@ def pdr(decisions, params, suspicious_strategy, agg_levels=['group'], n_samples=
 
     return pd.DataFrame(pdr)
 
+
+def ttests_operational_metrics(metrics, comparisons):
+    """
+    Independent samples t-test for the operational metrics we calculate
+    """
+    pvals = dict()
+
+    for comp in comparisons:
+        mean1 = metrics[metrics['group'] == comp[0]]['mean'].iloc[0]
+        mean2 = metrics[metrics['group'] == comp[1]]['mean'].iloc[0]
+
+        var1 = metrics[metrics['group'] == comp[0]]['var'].iloc[0]
+        var2 = metrics[metrics['group'] == comp[1]]['var'].iloc[0]
+
+        n1 = metrics[metrics['group'] == comp[0]]['n'].iloc[0]
+        n2 = metrics[metrics['group'] == comp[1]]['n'].iloc[0]
+        
+        res = stats.ttest_ind_from_stats(
+            mean1, np.sqrt(var1), n1,
+            mean2, np.sqrt(var2), n2,
+        )
+        
+        pvals[comp] =  {'tstat': res.statistic, 'pval':   res.pvalue}
+
+    return pvals
