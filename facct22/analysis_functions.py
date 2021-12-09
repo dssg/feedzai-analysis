@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import scipy.stats as stats
+import itertools
 
 from sklearn.utils import resample
 
@@ -395,3 +396,92 @@ def ttests_operational_metrics(metrics, comparisons):
         pvals[comp] =  {'tstat': res.statistic, 'pval':   res.pvalue}
 
     return pvals
+
+
+def do_parameter_sweep(
+    decisions, 
+    comparisons,
+    fn,
+    p_loss_trx, 
+    cust_worth,
+    p_loss_cust,
+    p_return_cust,
+    suspicious_handling
+):
+    all_param_combinations = itertools.product(
+        fn, 
+        p_loss_trx, 
+        cust_worth, 
+        p_loss_cust, 
+        p_return_cust,
+        suspicious_handling
+    )
+
+    results = list()
+    significance_results = list()
+    for config in all_param_combinations:
+        
+        # suspicious handling
+        if isinstance(config[5], int):
+            add_time= config[5]
+            suspicious_strategy = 'correct'
+        else:
+            add_time= 0 # The value doesn't matter
+            suspicious_strategy = config[5]
+            
+        
+        param = {
+            'fn': config[0],
+            'p_loss_trx': config[1],
+            'cust_worth': config[2],
+            'p_loss_cust': config[3],
+            'p_return_cust': config[4],
+            'suspicious_add_time': add_time,
+            'suspicious_strategy': suspicious_strategy
+        }
+
+        metrics = list()
+        ttests = list()
+        
+        df = dt(decisions, param, suspicious_strategy, ['group'])
+        df['metric'] = 'dt'
+        
+        ttest = ttests_operational_metrics(df, comparisons)
+        ttest['metric'] = 'dt'
+        
+        metrics.append(df)
+        ttests.append(ttest)
+        
+        
+        df = dps(decisions, param, suspicious_strategy, ['group'])
+        df['metric'] = 'dps'
+        
+        ttest = ttests_operational_metrics(df, comparisons)
+        ttest['metric'] = 'dps'
+        
+        metrics.append(df)
+        ttests.append(ttest)
+        
+        df = pdr(decisions, param, suspicious_strategy, ['group'], n_samples=500, n_iterations=100)
+        df['metric'] = 'pdr'
+        
+        ttest = ttests_operational_metrics(df, comparisons)
+        ttest['metric'] = 'pdr'
+        
+        metrics.append(df)
+        ttests.append(ttest)
+        
+        res = pd.concat(metrics)
+        sig_res = pd.concat(ttests)
+        
+        # appending the parameter values
+        for p, v in param.items():
+            res[p] = v
+            sig_res[p] = v
+
+
+        results.append(res)
+        significance_results.append(sig_res)
+
+    
+    return pd.concat(results), pd.concat(significance_results)
