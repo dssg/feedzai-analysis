@@ -44,9 +44,19 @@ users = (
 )
 
 # Mappping the db name to a "nicer" name
+# groups = {
+#     'Control_fa_ns': 'Control-A',
+#     'Control_fa_scores': 'Control-B',
+#     'Lime_1': 'LIME',
+#     'FZRF_TreeInterpreter_1': 'TreeInt',
+#     'TreeShap_1': 'TreeSHAP',
+#     'random_explainer_1': 'Random'
+# }
+
+# Mapping to names for the paper
 groups = {
-    'Control_fa_ns': 'Control-A',
-    'Control_fa_scores': 'Control-B',
+    'Control_fa_ns': 'Data',
+    'Control_fa_scores': 'ML Model',
     'Lime_1': 'LIME',
     'FZRF_TreeInterpreter_1': 'TreeInt',
     'TreeShap_1': 'TreeSHAP',
@@ -54,16 +64,21 @@ groups = {
 }
 
 
+
+# group_order = [
+#     'Control-A', 'Control-B', 'TreeSHAP', 'TreeInt', 'LIME', 'Random', 'Irrelevant'
+# ]
+
 group_order = [
-    'Control-A', 'Control-B', 'TreeSHAP', 'TreeInt', 'LIME', 'Random', 'Irrelevant'
+    'Data', 'ML Model', 'TreeSHAP', 'LIME', 'TreeInt', 'Random', 'Irrelevant'
 ]
 
 colors = [
     sns.color_palette("colorblind")[0],
     sns.color_palette("colorblind")[9],
     sns.color_palette("colorblind")[4],
-    sns.color_palette("colorblind")[3],
     sns.color_palette("colorblind")[2],
+    sns.color_palette("colorblind")[3],
     sns.color_palette("colorblind")[8],
     sns.color_palette("colorblind")[7],
 
@@ -167,6 +182,10 @@ def get_all_decisions(conn, schemas, users, groups):
     return df_all
 
 
+def get_all_explanations(conn, schemas, groups):
+    """fetch all the explanations for each explainer"""
+
+
 def assign_conf_mat_cell(decisions, suspicious_strategy='correct' ):
     if suspicious_strategy=='correct':
         def process_decision(row):
@@ -232,7 +251,7 @@ def _modify_value_and_time(decisions, params, suspicious_strategy):
         'tp': 0,
         'tn': 1 + (params['cust_worth']) * params['p_return_cust'],
         'fn': params['fn'],
-        'fp': (1 - params['p_loss_trx']) - (params['cust_worth'] * params['p_loss_cust']) # assuming the customer worth is on average n times the transaction value
+        'fp': (1 - params['p_loss_trx']) + (params['cust_worth'] * (1-params['p_loss_cust'])) # assuming the customer worth is on average n times the transaction value
     }
 
     # calculating the decision value
@@ -329,7 +348,7 @@ def dt(decisions, params, suspicious_strategy, agg_levels=['group']):
     return pd.DataFrame(dt)
 
 
-def pdr(decisions, params, suspicious_strategy, agg_levels=['group'], n_samples=160, n_iterations=50):
+def pdr(decisions, params, suspicious_strategy, agg_levels=['group'], n_samples=None, n_iterations=1000):
     """
     Calculating the percent dollar regret metric. 
     This calculates how far the decisions in the group are from a perfect scenario    
@@ -349,8 +368,14 @@ def pdr(decisions, params, suspicious_strategy, agg_levels=['group'], n_samples=
     for g, df in grpobj:
         means = list()
 
+        if n_samples is None:
+            n=len(df)
+            print('n_samples not set. Defaulting to the group size')
+        else:
+            n=n_samples
+
         for i in range(n_iterations):
-            t = resample(df, replace=True, n_samples=n_samples)
+            t = resample(df, replace=True, n_samples=n)
 
             m = 1 - (t['decision_value'].sum() / t['potential_revenue'].sum())
             means.append(m)
@@ -373,15 +398,13 @@ def pdr(decisions, params, suspicious_strategy, agg_levels=['group'], n_samples=
 
 
 def ttests_operational_metrics(metrics, comparisons):
-    """
-    Independent samples t-test for the operational metrics we calculate
-    """
-    pvals = dict()
+    
+    results = list()
 
     for comp in comparisons:
         mean1 = metrics[metrics['group'] == comp[0]]['mean'].iloc[0]
         mean2 = metrics[metrics['group'] == comp[1]]['mean'].iloc[0]
-
+        
         var1 = metrics[metrics['group'] == comp[0]]['var'].iloc[0]
         var2 = metrics[metrics['group'] == comp[1]]['var'].iloc[0]
 
@@ -393,9 +416,15 @@ def ttests_operational_metrics(metrics, comparisons):
             mean2, np.sqrt(var2), n2,
         )
         
-        pvals[comp] =  {'tstat': res.statistic, 'pval':   res.pvalue}
-
-    return pvals
+        
+        d = dict()
+        d['comparison'] = comp
+        d['t-stat'] = res.statistic
+        d['p-val'] = res.pvalue
+        
+        results.append(d)
+        
+    return pd.DataFrame(results)
 
 
 def do_parameter_sweep(
@@ -485,3 +514,35 @@ def do_parameter_sweep(
 
     
     return pd.concat(results), pd.concat(significance_results)
+
+
+def chi_square_test(contingency_table: np.array) -> tuple:
+    """ Performs a chi-squared test, given an matrix with the observed values
+    (contingency table).
+
+    It is assumed that the rows represent the group and the columns represent
+    the classes.
+
+    Parameters
+    ----------
+    contingency: numpy.array
+        Observed frequencies of each group for a given class.
+
+    Return
+    ------
+    tuple
+        Statistic and p-value of the test.
+    """
+    expected = []
+    for j in range(contingency_table.shape[0]):
+        expected_line = []
+        for i in range(contingency_table.shape[1]):
+            frequency = np.sum(contingency_table[:, i]) / np.sum(contingency_table)
+            expected_value = frequency * np.sum(contingency_table[j, :])
+            expected_line.append(expected_value)
+        expected.append(expected_line)
+    expected = np.array(expected)
+    statistic = np.sum((contingency_table-expected)**2 / expected)
+    dof = (contingency_table.shape[0]-1) * (contingency_table.shape[1]-1)
+    pvalue = 1 - stats.chi2(df=dof).cdf(statistic)
+    return statistic, pvalue
