@@ -7,7 +7,7 @@ This repository contains the code for the analyses we conducted for the paper ti
 
 ## Replicating the analyses
 
-The data used for calculating metrics and analyses can be [downloaded from here](https://bit.ly/3eMcpYZ). 
+The data used for calculating metrics and analyses is placed in `data/all_analyst_decisions.csv`.
 
 1. The code in this repository is written to fetch data from a PostgreSQL database. However, we have exported the dataset in to a CSV for improving accessibility, and thus, the code needs to be adapted to match the new format. 
 
