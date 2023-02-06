@@ -2,6 +2,8 @@ pandas
 seaborn
 matplotlib
 scipy
-sklearn
+scikit-learn
 psycopg2
 pyyaml
+jupyterlab
+statsmodels
